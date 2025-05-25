@@ -1,57 +1,134 @@
-let socket;
-const messagesDiv = document.getElementById('messages');
+let socket = null;
+
+const chatLog = document.getElementById('chatLog');
+const userCountSpan = document.getElementById('userCount');
+const userListUl = document.getElementById('userList');
+const messageInput = document.getElementById('messageInput');
+const usernameInput = document.getElementById('username');
+const sendBtn = document.getElementById('sendBtn');
+const connectBtn = document.getElementById('connectBtn');
 
 function connect() {
-  // Establecer la conexión WebSocket (ajustar puerto si no es 8080)
+  const username = usernameInput.value.trim();
+  if (!username) {
+    alert("Por favor, ingresa tu nombre antes de conectarte.");
+    return;
+  }
+
   socket = new WebSocket('ws://' + window.location.host + '/chat');
 
   socket.onopen = () => {
     console.log("Conectado al servidor WebSocket");
+    socket.send(JSON.stringify({ user: username }));
+
+    // Bloquear input nombre y botón conectar
+    usernameInput.disabled = true;
+    connectBtn.disabled = true;
+
+    // Habilitar input mensaje y botón enviar
+    messageInput.disabled = false;
+    sendBtn.disabled = false;
+    messageInput.focus();
   };
 
   socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    displayMessage(msg.user, msg.message);
+
+    if (msg.type === 'system') {
+      displaySystemMessage(msg.message);
+      updateUserCount(msg.userCount);
+
+      if (msg.users) {
+        updateUserList(msg.users);
+      }
+    } else {
+      displayMessage(msg.user, msg.message);
+    }
   };
 
   socket.onclose = () => {
-    displaySystemMessage("Desconectado del servidor");
+    console.log("Conexión WebSocket cerrada");
+    displaySystemMessage("Conexión al servidor perdida.");
+    updateUserCount(0);
+    updateUserList([]);
+
+    // Volver a habilitar para reconectar
+    usernameInput.disabled = false;
+    connectBtn.disabled = false;
+    messageInput.disabled = true;
+    sendBtn.disabled = true;
   };
 
-  socket.onerror = (err) => {
-    console.error("WebSocket error", err);
+  socket.onerror = (error) => {
+    console.error("Error en WebSocket:", error);
   };
+}
+
+function sendMessage() {
+  const message = messageInput.value.trim();
+  const username = usernameInput.value.trim();
+
+  if (message === '') return;
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    const msgObj = {
+      user: username,
+      message: message
+    };
+
+    socket.send(JSON.stringify(msgObj));
+    messageInput.value = '';
+  } else {
+    alert("La conexión no está abierta.");
+  }
 }
 
 function displayMessage(user, message) {
   const div = document.createElement('div');
-  div.textContent = `${user}: ${message}`;
-  messagesDiv.appendChild(div);
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  div.classList.add('message');
+
+  const userSpan = document.createElement('strong');
+  userSpan.textContent = user + ": ";
+  div.appendChild(userSpan);
+
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = message;
+  div.appendChild(msgSpan);
+
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
 }
 
 function displaySystemMessage(message) {
+  if (!message) return;
+
   const div = document.createElement('div');
-  div.style.color = "gray";
-  div.textContent = `[Sistema] ${message}`;
-  messagesDiv.appendChild(div);
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  div.classList.add('system-message');
+  div.textContent = message;
+
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
 }
 
-function sendMessage() {
-  const username = document.getElementById('username').value.trim();
-  const message = document.getElementById('message').value.trim();
-
-  if (!username || !message || socket.readyState !== WebSocket.OPEN) return;
-
-  const msgObj = {
-    user: username,
-    message: message
-  };
-
-  socket.send(JSON.stringify(msgObj));
-  document.getElementById('message').value = '';
+function updateUserCount(count) {
+  userCountSpan.textContent = count;
 }
 
-// Conectar automáticamente al cargar la página
-window.addEventListener('load', connect);
+function updateUserList(users) {
+  userListUl.innerHTML = '';
+  users.forEach(user => {
+    const li = document.createElement('li');
+    li.classList.add('list-group-item', 'py-1');
+    li.textContent = user;
+    userListUl.appendChild(li);
+  });
+}
+
+sendBtn.addEventListener('click', sendMessage);
+messageInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    sendMessage();
+  }
+});
+
+connectBtn.addEventListener('click', connect);
